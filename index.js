@@ -10,7 +10,7 @@ module.exports = homebridge => {
     Service = homebridge.hap.Service;
     Characteristic = homebridge.hap.Characteristic;
     Formats = homebridge.hap.Characteristic.Formats;
-    homebridge.registerAccessory('homebridge-mqttthing', 'mqttthing', Thing);
+    homebridge.registerAccessory('homebridge-simple-mqtt', 'simple-mqtt', Thing);
 }
 
 class Thing {
@@ -58,34 +58,13 @@ class Thing {
         return service;
     }
 
-    coerceByCharacteristic(message, char) {
-        let coerced = null;
-        switch (char.props.format) {
-            case Formats.INT:
-            case Formats.FLOAT:
-            case Formats.UINT8:
-            case Formats.UINT16:
-            case Formats.UINT32:
-            case Formats.UINT64:
-                coerced = Number(message);
-                break;
-            case Formats.BOOL:
-                coerced = ['off', 'false', '0'].indexOf(message.toString()) == -1;
-                break;
-            case Formats.STRING:
-                coerced = message.toString();
-                break;
-            default:
-                throw new Error('unknown type ' + char.props.format)
-        }
-        return coerced;
-    }
-
     publishTopic(char, topicDefines, state, callback) {
         const client = this.client;
         const log = this.log;
 
-        client.publish(topicDefines.set, String(state));
+        client.publish(topicDefines.set, JSON.stringify({
+            value: state,
+        }));
         log(char.displayName + ' set to ' + state);
         callback(null);
     }
@@ -93,17 +72,18 @@ class Thing {
     processMessage(char, topicDefines, topic, message) {
         const client = this.client;
         const log = this.log;
+        const payload = JSON.parse(message);
 
         if (topicDefines.get == topic) {
-            char.updateValue(this.coerceByCharacteristic(message, char));
-            log(char.displayName + ' value updated to ' + message);
+            char.updateValue(payload.value);
+            log(char.displayName + ' value updated to ' + payload.value);
         }
         Object.keys(topicDefines.props || {}).forEach(propKey => {
             if (topicDefines.props[propKey] == topic) {
                 char.setProps({
-                    [propKey]: this.coerceByCharacteristic(message, char),
+                    [propKey]: payload.value,
                 });
-                log(char.displayName + ' ' + propKey + ' updated to ' + message);
+                log(char.displayName + ' ' + propKey + ' updated to ' + payload.value);
             }
         });
     }
